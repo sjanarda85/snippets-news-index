@@ -1,6 +1,6 @@
 // Weekly 5% spot check of UNFLAGGED stories (Legal: section 10).  node spotcheck.mjs [baseUrlOrDir] [--pct 5] > spotcheck-YYYYMMDD.csv
 // Samples stories from curated/24h shards (world + India), skips flagged ones, prints id, outlets, headline, url so a human can check for
-// crime / named-person / minors content the keyword filter missed. Anything found: add the URL to blocklist.txt (and the Worker's list) and tell Legal.
+// crime / named-person / minors content the keyword filter missed. Anything found: hide it (blocklist-tool.mjs / POST /api/admin/hide) and tell Legal.
 import { readFile } from "node:fs/promises";
 const a = process.argv.slice(2); const base = (a.find((x, i) => !x.startsWith("--") && a[i - 1] !== "--pct") || "https://sjanarda85.github.io/snippets-news-index").replace(/\/$/, "");
 const pi = a.indexOf("--pct"); const pct = (pi >= 0 ? Number(a[pi + 1]) : 5) / 100;

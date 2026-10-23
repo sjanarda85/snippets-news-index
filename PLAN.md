@@ -112,8 +112,8 @@ Run: `node ingest.mjs backfill --days 3 --nobuild && node ingest.mjs build && no
 | g | Flagged = crime/court (the allegation label applies) and named-person (headline-only): headline unchanged, no summary, label "Reported by [Outlet]. Allegation, not established." Stories involving minors or sexual-offence victims are dropped at ingest (keyword filter, conservative). Guilt-as-fact stories about named people are held (not published). Blocklist: see below. | |
 
 **Blocklist SOP (credible legal complaint: remove within 4 hours).**
-1. Add the URL (or `id:<storyId>`) to **both** `worker/src/blocklist.js` (`BLOCKED_URLS`) and `ingest/blocklist.txt`.
-2. `cd worker && ./deploy.sh` (the cache key includes a hash of the list, so every cached copy is dead the moment the new Worker is live), then push `blocklist.txt` and run the workflow once (`gh workflow run index.yml`) so the URL leaves the shards too.
+1. Hide first: `POST /api/admin/hide` (needs the Worker store) or, without it, add the hashed row to `ingest/blocklist.json` with `node blocklist-tool.mjs add url <url> --reason LEGAL`. This one file is read by ingest **and** the Worker (no second list, no Worker redeploy).
+2. Commit and push `blocklist.json`, then run the workflow once (`gh workflow run index.yml`): the file is published with the index, the Worker re-reads it within ~60 s, and the URL leaves the shards on that build.
 3. Log the removal as: date, SHA-256 of the URL, who asked. Do not keep the headline or the URL.
 4. Tell Legal the URL is down. Target: within 4 hours of receipt.
 

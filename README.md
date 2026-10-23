@@ -20,7 +20,8 @@ Only: story headline (as published by the outlet), link to the outlet's page, ou
 - Retention: Live ≤ 6 h of stories (shards are replaced every run, nothing is accumulated); Curated ≤ 30 days; crime/court/named-person ("flagged") stories ≤ 7 days, removed from stored state too.
 - Flagged stories: the publisher's headline is kept unchanged, no tone, no ranking boost, placed on a place page only if the place is named in the headline.
 - Stories about minors in conflict with the law or victims of sexual offences are dropped at ingest. Stories that state guilt as fact about a person are held back.
-- `blocklist.txt`: a URL (or `id:<storyId>`) listed there is never stored and is removed from every shard on the next build.
+- `blocklist.json` (the single blocklist, schema `snippets.blocklist.v1`): hashed URL / story id / domain / term entries (hashes and reason codes only, no URLs). Anything matching is never stored and is removed from every shard on the next build. The Worker reads the same published file. Add rows with `node blocklist-tool.mjs add url <url> --reason LEGAL`.
+- `corrections.json` (schema `snippets.corrections.v1`): published corrections, served by the Worker as `GET /api/corrections` and shown on the story. `node test-editorial.mjs` tests the v1.5 behaviour (headline cleaning, health/election flags, blocklist).
 - Shards are **not committed to git**. Each run publishes them as a Pages artifact, so there is no headline history in this repository. `robots.txt` asks crawlers not to index the site.
 
 ## Run locally

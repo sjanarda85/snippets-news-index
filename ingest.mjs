@@ -15,6 +15,7 @@ import { loadOutlets } from "./lib/outlets.mjs";
 import { enrich, storiesFromArticles, mergeStories, rankShards, apiStory, localOf, domainWeights, applyWeights, PERIODS } from "./lib/build.mjs";
 import { TOPIC_LABEL } from "./lib/topics.mjs";
 import { POLICY } from "./lib/policy.mjs";
+import { compileBlocklist, articleBlocked, matchesBlocklist } from "./vendor/blocklist-core.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2), cmd = args[0] || "update";
@@ -32,11 +33,12 @@ const writeGz = (f, o) => fs.writeFileSync(f, zlib.gzipSync(JSON.stringify(o), {
 const readGz = (f) => JSON.parse(zlib.gunzipSync(fs.readFileSync(f)).toString());
 const bFile = (s) => path.join(STATE, "batches", s + ".json.gz"), dFile = (d) => path.join(STATE, "days", d + ".json.gz");
 const listBatches = () => fs.readdirSync(path.join(STATE, "batches")).filter((f) => f.endsWith(".json.gz")).map((f) => f.slice(0, 14)).sort();
-/* takedown blocklist (blocklist.txt: one URL or "id:<storyId>" per line, # comments). Blocked URLs are never stored and any story containing one is dropped from every shard on the next build. */
-const normUrl = (u) => String(u).trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/+$/, "");
-const BLOCK = { urls: new Set(), ids: new Set() };
-try { for (const l of fs.readFileSync(path.join(HERE, "blocklist.txt"), "utf8").split("\n")) { const x = l.replace(/#.*/, "").trim(); if (!x) continue; if (x.startsWith("id:")) BLOCK.ids.add(x.slice(3)); else BLOCK.urls.add(normUrl(x)); } } catch {}
-const blockedStory = (s) => BLOCK.ids.has(s.id) || s.src.some((x) => BLOCK.urls.has(normUrl(x[1])));
+/* Takedown blocklist: ONE file, blocklist.json (url hashes, story ids, domains, terms; same file the Worker bundles; format in vendor/blocklist-core.js).
+   Blocked articles are never stored; any story that still matches is dropped from every shard and rollup on the next build. */
+let BL = compileBlocklist(null);
+try { BL = compileBlocklist(JSON.parse(fs.readFileSync(path.join(HERE, "blocklist.json"), "utf8"))); } catch (e) { if (e.code !== "ENOENT") throw e; }
+if (BL.problems.length) { console.error("blocklist.json problems: " + BL.problems.join("; ")); process.exit(2); }
+const blockedStory = (s) => matchesBlocklist({ id: s.id, headline: s.h, sources: s.src.map((x) => ({ domain: x[0], url: x[1], title: x[2] })) }, BL);
 const stats = { rows: 0, kept: 0, junk: {}, batches: 0, bytesZip: 0 };
 
 async function processBatch(stamp) {
@@ -51,7 +53,7 @@ async function processBatch(stamp) {
     stats.rows++;
     const dc = (domCount.get(a.domain) || 0) + 1; domCount.set(a.domain, dc);
     if (dc > 25) { stats.junk["domain-cap"] = (stats.junk["domain-cap"] || 0) + 1; continue; }   // one outlet cannot flood a 15-min batch
-    if (BLOCK.urls.has(normUrl(a.url))) { stats.junk.blocklist = (stats.junk.blocklist || 0) + 1; continue; }
+    if (articleBlocked({ u: a.url, d: a.domain, t: a.title }, BL)) { stats.junk.blocklist = (stats.junk.blocklist || 0) + 1; continue; }
     const e = enrich(a, ctx, stats); if (e) { arts.push(e); stats.kept++; }
   }
   writeGz(bFile(stamp), arts); stats.batches++;

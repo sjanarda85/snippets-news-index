@@ -64,7 +64,7 @@ export function clusterArticles(articles, threshold = 0.42) {
     const times = sources.map((s) => s.publishedAt).filter(Boolean).sort();
     return {
       id: hash(normTitle(lead.title)),
-      headline: cleanHeadline(lead.title),
+      headline: cleanHeadline(lead.title, lead.domain || lead.outlet),
       sources,
       firstSeen: times[0] || null,
       updatedAt: times[times.length - 1] || null,
@@ -73,7 +73,30 @@ export function clusterArticles(articles, threshold = 0.42) {
   }).sort((a, b) => (b.sources.length - a.sources.length) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 }
 function scoreTitle(t) { const n = normTitle(t).split(" ").length; return (n >= 6 && n <= 16 ? 10 : 0) - Math.abs(11 - n) * 0.3; }
-export function cleanHeadline(t) { const re = /\s+[-|–—]\s+[^-|–—]{2,60}$/u; return String(t || "").replace(re, "").replace(/\s+\|\s+[^|]{2,40}$/u, "").trim(); }
+/* Headline cleaning (editorial guide 7.3): strips site-name junk only, never rewords. "A | 100.7 MIX-FM | Today's Hit Music" -> "A"; "A - The Indian Awaaz" -> "A".
+   Pipe segments are always separators; a trailing " - X" is removed only when X looks like an outlet name (matches the outlet's domain, has a site word, or is a short capitalised name),
+   so "A - 'I want it to work out'" keeps its quote. `domain` (optional) makes the outlet match exact. */
+const SITE_WORDS = /\b(news|times|post|herald|tribune|express|hindu|mirror|daily|today|live|tv|fm|radio|network|channel|online|media|journal|chronicle|gazette|telegraph|standard|digest|wire|press|world|india|indian|mix|official|portal|magazine|bulletin|observer|monitor|insider|desk|awaaz|samachar|khabar|sun|star|globe|guardian|review|mail|reporter|courier|bureau|agency|netw?ork|sentinel|bazaar|today)\b/i;
+const alnum = (x) => String(x || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "");
+function siteLike(seg, domain, restWords) {
+  const words = seg.trim().split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 6 || /[.?!:;"“”'‘’]$|^["“'‘]/.test(seg.trim()) || /["“”]/.test(seg)) return false;
+  const a = alnum(seg), d = alnum(String(domain || "").replace(/^www\./, "").split(".").slice(0, -1).filter((x) => !/^(co|com|org|net|gov|ac)$/.test(x)).pop());
+  if (d && a.length >= 4 && d.length >= 4 && (d.includes(a) || a.includes(d))) return true;
+  if (SITE_WORDS.test(seg)) return true;
+  return words.length <= 3 && restWords >= 5 && words.every((w) => /^([A-Z][\p{L}0-9'’.&-]*|[0-9][0-9.]*|of|the|and|&)$/u.test(w));
+}
+export function cleanHeadline(t, domain) {
+  let s = String(t || "").replace(/\s+/g, " ").trim();
+  const parts = s.split(/\s+\|\s+/);
+  if (parts.length > 1 && parts[0].split(/\s+/).length >= 3) s = parts[0].trim();
+  for (let i = 0; i < 2; i++) {   // up to two trailing " - Outlet" tails ("A - Section - Outlet")
+    const m = /^(.{12,}?)\s+[-–—]\s+([^-–—]{2,60})$/u.exec(s);
+    if (!m || !siteLike(m[2], domain, m[1].split(/\s+/).length)) break;
+    s = m[1].trim();
+  }
+  return s;
+}
 function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return "s" + (h >>> 0).toString(36); }
 
 const CATS = [

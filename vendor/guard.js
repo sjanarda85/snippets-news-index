@@ -16,6 +16,10 @@ export function headlineOnlyReason(story) {
   return null;
 }
 
+/* Health and election claims (editorial guide 4 / 7.4): flagged for human review as well. Title cues only here; the ingester adds GKG theme cues
+   (HEALTH_* / ELECTION themes) on top. Flagged = headline-only, no summary, no tone. */
+const HEALTH_CLAIM = /\b(vaccin\w*|vaccine|cure[sd]?|treatment|therap(y|ies)|outbreak|epidemic|pandemic|virus(es)?|infection|disease|cancer|covid\w*|dengue|nipah|malaria|tuberculosis|diabetes|diet|medicine|medication|drug|dose|dosage|symptoms?|side effects?|clinical trial|health (ministry|alert|advisory|warning|officials?)|who (says|warns|declares|alert)|icmr|fda|cdc|superfood|immunity|mental health)\b/i;
+const ELECTION_CLAIM = /\b(elections?|by-?elections?|polls?|poll(ing)?|exit polls?|ballot\w*|voters?|voting|votes?|evms?|vvpat|election commission|eci|manifesto|candidates?|constituency|vote counting|seat share|rigging)\b/i;
 /* Crime, courts, sexual offences, corruption and named people: flag for human review. */
 const SENSITIVE = /\b(murder\w*|kill(ed|ing|s)?|rape\w*|sexual|molest\w*|assault\w*|abus(e|ed|ing)|pocso|arrest\w*|detain\w*|accused|alleg\w*|police|fir\b|chargesheet\w*|court|bail|custody|convict\w*|sentenc\w*|acquit\w*|verdict|cbi|enforcement directorate|raid\w*|corrupt\w*|brib\w*|scam\w*|fraud\w*|lynch\w*|stab\w*|shot dead|kidnap\w*|abduct\w*|suicide|dowry|terror\w*|militant\w*|encounter|probe|defam\w*|minor\b|victim\w*)\b/i;
 // Two or more capitalised words in a row that are not a known place/organisation phrase -> probably a person's name.
@@ -24,6 +28,8 @@ export function reviewReasons(story) {
   const text = (story.sources || []).map((s) => s.title || "").join(" \n ") + " " + (story.headline || "");
   const r = [];
   if (SENSITIVE.test(text)) r.push("crime-or-court");
+  if (HEALTH_CLAIM.test(text)) r.push("health-claim");
+  if (ELECTION_CLAIM.test(text)) r.push("election-claim");
   // Skip Title-Case headlines (most words capitalised): capitals there say nothing about names.
   const sentenceCase = (story.sources || []).map((s) => s.title || "").filter((t) => { const w = t.split(/\s+/).filter((x) => /^[A-Za-z]/.test(x)); return w.length && w.filter((x) => /^[A-Z]/.test(x)).length / w.length < 0.6; });
   const caps = sentenceCase.join(" \n ").match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) || [];
@@ -40,6 +46,21 @@ export function sharedRun(summary, inputs, n = NGRAM) {
   for (let i = 0; i + n <= s.length; i++) { const g = s.slice(i, i + n).join(" "); if (grams.has(g)) return g; }
   return null;
 }
+/* Longest run of consecutive words shared with any input (editorial guide 7.6 "overlapRun"; same word rules as sharedRun / overlap_check.py). Returns a number. */
+export function longestRun(summary, inputs) {
+  const s = words(summary); let best = 0;
+  for (const inp of inputs) {
+    const w = words(inp); if (!w.length || !s.length) continue;
+    let prev = new Array(w.length + 1).fill(0);
+    for (let i = 1; i <= s.length; i++) {
+      const cur = new Array(w.length + 1).fill(0);
+      for (let j = 1; j <= w.length; j++) if (s[i - 1] === w[j - 1]) { cur[j] = prev[j - 1] + 1; if (cur[j] > best) best = cur[j]; }
+      prev = cur;
+    }
+  }
+  return best;
+}
+export const wordCount = (t) => words(t).length;
 /* Attribution wording ("X reports", "according to X", "police allege"). */
 export const hasAttribution = (t) => /\b(reports?|reported|according to|says|said|cites?|allege[sd]?|claims?|quotes?)\b/i.test(t);
 /* Hard cap: 60 words / 400 characters, cut at a sentence end where possible. No quotations allowed at all. */

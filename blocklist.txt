@@ -1,3 +1,0 @@
-# Takedown blocklist. One URL per line (scheme, www, query and trailing slash are ignored), or "id:<storyId>".
-# A listed URL is never stored; any story that contains it is removed from every shard on the next build.
-# Process (4-hour target for credible legal complaints): add the line here AND in worker/src/blocklist.js, redeploy the Worker (hides it at once and purges its caches), then push this file.

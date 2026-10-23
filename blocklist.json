@@ -1,0 +1,5 @@
+{
+  "schema": "snippets.blocklist.v1",
+  "note": "Single blocklist for the ingest job AND the Worker (worker/sync-blocklist.mjs copies it into the Worker bundle). PUBLIC repo: url entries are SHA-256 hashes of the normalised URL (scheme, www, query, fragment, trailing slash dropped), never URLs; reason is a code only (LEGAL, SAFETY, LICENCE, QUALITY, SPAM or HIDE); no headline, no complaint detail. Types: url (hash), story (story id), domain, term (phrase). Removing an entry needs owner approval (SOP 04). Add with: node blocklist-tool.mjs add <url|id:storyId|domain:x|term:phrase> [REASON].",
+  "entries": []
+}

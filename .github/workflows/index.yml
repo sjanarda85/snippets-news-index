@@ -32,7 +32,7 @@ jobs:
       - name: Prepare site
         run: |
           rm -f _site/_report.json
-          cp public/index.html public/robots.txt _site/
+          cp public/index.html public/robots.txt blocklist.json corrections.json _site/   # blocklist (hashes) + corrections: also read by the Worker
           touch _site/.nojekyll
           du -sh _site; find _site -type f | wc -l
       - uses: actions/upload-pages-artifact@v4

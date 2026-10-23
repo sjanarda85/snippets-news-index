@@ -1,0 +1,5 @@
+{
+  "schema": "snippets.corrections.v1",
+  "note": "Public corrections feed (GET /api/corrections shows the last 30 days; a story's own corrections show on its card). Single source for the Worker (read from the index host, bundled copy via worker/sync-data.mjs). One row per correction: id, storyId (optional), correctedAt (ISO with +05:30), reportedAt (optional, for median time-to-correct), note (plain, factual, no personal data). Mirror each row in editorial/corrections-log.md.",
+  "entries": []
+}
