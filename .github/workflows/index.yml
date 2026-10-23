@@ -1,0 +1,54 @@
+# Builds the GDELT headline index and publishes it to GitHub Pages as an ARTIFACT (shards are never committed to git).
+# Only the built-in GITHUB_TOKEN is used. No secrets.
+name: index
+on:
+  schedule: [{ cron: "7,22,37,52 * * * *" }]      # odd minutes: GDELT publishes at :00/:15/:30/:45 and GitHub is busiest on the hour
+  workflow_dispatch:
+    inputs:
+      backfill_days: { description: "Force a fresh backfill of this many whole days (empty = normal update)", required: false, default: "" }
+concurrency: { group: snippets-index, cancel-in-progress: false }
+permissions: { contents: write, pages: write, id-token: write, actions: write }   # contents: weekly heartbeat commit only; actions: delete old caches
+env: { NODE_OPTIONS: "--max-old-space-size=3072" }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - id: cache                                   # state = 72 h of batches + day roll-ups (rebuildable by a backfill)
+        uses: actions/cache@v4
+        with: { path: state, key: "state-${{ github.run_id }}", restore-keys: "state-" }
+      - name: Ingest and build
+        env: { BACKFILL_DAYS: "${{ inputs.backfill_days }}", CACHE_HIT: "${{ steps.cache.outputs.cache-matched-key }}" }
+        run: |
+          if [ -n "$BACKFILL_DAYS" ] || [ -z "$CACHE_HIT" ]; then
+            node ingest.mjs backfill --days "${BACKFILL_DAYS:-7}" --state state --out _site --deadline-min 18
+          else
+            node ingest.mjs update --target-days 30 --grow-days 4 --state state --out _site --deadline-min 14
+          fi
+      - name: Prepare site
+        run: |
+          rm -f _site/_report.json
+          cp public/index.html public/robots.txt _site/
+          touch _site/.nojekyll
+          du -sh _site; find _site -type f | wc -l
+      - uses: actions/upload-pages-artifact@v4
+        with: { path: _site }
+      - id: dep
+        uses: actions/deploy-pages@v4
+      - name: Delete old state caches (keep the newest one)
+        continue-on-error: true
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh cache list --key state- --sort created_at --order desc --json id --jq '.[1:][].id' | xargs -r -n1 gh cache delete
+      - name: Weekly heartbeat commit (keeps scheduled runs enabled)
+        continue-on-error: true
+        run: |
+          last=$(git log -1 --format=%ct)
+          if [ $(( $(date +%s) - last )) -gt 518400 ]; then
+            date -u +"heartbeat %Y-%m-%dT%H:%M:%SZ" > HEARTBEAT.txt
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add HEARTBEAT.txt && git commit -m "heartbeat" && git push
+          fi
