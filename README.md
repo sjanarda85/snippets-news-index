@@ -13,7 +13,7 @@ Only: story headline (as published by the outlet), link to the outlet's page, ou
 
 - `places.json` — which place/topic/period shards exist, plus `generatedAt` (time of the newest GDELT batch), `builtAt` (when this build ran) and `attribution`.
 - `live/<place>/<topic>.json` — last ~6 hours, newest first.
-- `curated/<24h|7d|30d>/<place>/<topic>.json` — ranked by number of distinct outlets, recency and prominence.
+- `curated/<24h|7d|30d>/<place>/<topic>.json` — ranked by the editorial score (coverage, reach, topic tier × scope weight, diversity); the World shards also apply the country and region caps. `rg-<region>` shards hold the seven world regions + `rg-multi-region`.
 - Every shard carries an `attribution` field.
 
 ## Policy built into the build (see `lib/policy.mjs`)
@@ -35,3 +35,5 @@ Node 20+ . No dependencies.
 `ingest.mjs` (CLI), `lib/` (GDELT download/parse, junk filter, places, topics, clustering, ranking, policy), `vendor/` (copies of the Worker's `cluster.js`, `guard.js`, `resolver.js`; refresh with `sync-vendor.sh` in the main project), `geo/` + `data/` (place and outlet-country data, credits in `DATA-NOTICE.md`), `.github/workflows/index.yml`.
 
 See `DATA-NOTICE.md` for data licences and credits, and `PLAN.md` for design notes. Code: MIT.
+
+- v1.6 fields: `region`, `regions`, `countries` (ISO), `scope`, `lang`, `languageTier`, per-source `outletCountry` (`unknown` when the domain is not on GDELT's list; never guessed) and a shard-level `diversity` block. Times are UTC. Translation files and extra languages are off unless `TRANSLATION_FILES=1` / `LANG_L2` are set.

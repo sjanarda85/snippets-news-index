@@ -1,0 +1,21 @@
+{
+  "schema": "snippets.regions.v1",
+  "note": "Country -> editorial region (editorial guide 02/03: seven regions plus multi-region). Owner-editable. Default comes from the map data's continent; 'overrides' wins. ISO 3166-1 alpha-2 keys. Places with no ISO code (disputed/uninhabited areas) get no region.",
+  "regions": [
+    { "id": "africa", "name": "Africa" },
+    { "id": "asia", "name": "Asia" },
+    { "id": "europe", "name": "Europe" },
+    { "id": "middle-east", "name": "Middle East" },
+    { "id": "north-america", "name": "North America" },
+    { "id": "latin-america", "name": "Latin America" },
+    { "id": "oceania", "name": "Oceania" }
+  ],
+  "multi": { "id": "multi-region", "name": "Multi-region" },
+  "continentDefault": { "Africa": "africa", "Asia": "asia", "Europe": "europe", "North America": "latin-america", "South America": "latin-america", "Oceania": "oceania" },
+  "overrides": {
+    "US": "north-america", "CA": "north-america", "GL": "north-america", "BM": "north-america", "PM": "north-america",
+    "AE": "middle-east", "BH": "middle-east", "EG": "middle-east", "IL": "middle-east", "IQ": "middle-east", "IR": "middle-east", "JO": "middle-east", "KW": "middle-east",
+    "LB": "middle-east", "OM": "middle-east", "PS": "middle-east", "QA": "middle-east", "SA": "middle-east", "SY": "middle-east", "TR": "middle-east", "YE": "middle-east",
+    "CY": "europe", "RE": "africa", "YT": "africa"
+  }
+}

@@ -12,6 +12,8 @@ import { fileURLToPath } from "node:url";
 import { latestStamp, stampsBack, stampOf, downloadGkg, unzipFirst, parseGkg, dateOfStamp } from "./lib/gdelt.mjs";
 import { loadPlaces } from "./lib/places.mjs";
 import { loadOutlets } from "./lib/outlets.mjs";
+import { loadGeo, REGION_IDS, MULTI, REGION_NAMES } from "./lib/geo.mjs";
+import { diversityReport } from "./vendor/diversity.js";
 import { enrich, storiesFromArticles, mergeStories, rankShards, apiStory, localOf, domainWeights, applyWeights, PERIODS } from "./lib/build.mjs";
 import { TOPIC_LABEL } from "./lib/topics.mjs";
 import { POLICY } from "./lib/policy.mjs";
@@ -26,7 +28,8 @@ const WINDOW_H = 72, KEEP_DAYS = 30;
 fs.mkdirSync(path.join(STATE, "batches"), { recursive: true }); fs.mkdirSync(path.join(STATE, "days"), { recursive: true });
 
 const P = loadPlaces(path.join(HERE, "geo"));
-const ctx = { P, outletCountry: loadOutlets(path.join(HERE, "data/DOMAINSBYCOUNTRY-ALLLANGUAGES.TXT")) };
+const ctx = { P, G: loadGeo(P, path.join(HERE, "geo")), outletCountry: loadOutlets(path.join(HERE, "data/DOMAINSBYCOUNTRY-ALLLANGUAGES.TXT")) };
+const describe = (key) => { const m = /^rg-(.+)$/.exec(key); return m ? (REGION_NAMES[m[1]] ? { type: "region", name: REGION_NAMES[m[1]], region: m[1] } : null) : P.describe(key); };
 const T0 = Date.now(), lap = (m) => console.error(`[${((Date.now() - T0) / 1000).toFixed(1)}s] ${m}`);
 const stampMs = (s) => dateOfStamp(s).getTime();
 const writeGz = (f, o) => fs.writeFileSync(f, zlib.gzipSync(JSON.stringify(o), { level: 6 }));
@@ -48,8 +51,12 @@ async function processBatch(stamp) {
   else buf = await downloadGkg(stamp);
   if (!buf) return;
   stats.bytesZip += buf.length;
-  const arts = [], domCount = new Map();
-  for (const a of parseGkg(unzipFirst(buf).toString("utf8"), stamp)) {
+  const arts = [], domCount = new Map(), parts = [parseGkg(unzipFirst(buf).toString("utf8"), stamp)];
+  if (POLICY.TRANSLATION_FILES && POLICY.LANG_L2.length) {   // off by default: see POLICY.TRANSLATION_FILES
+    const tb = (RAW && fs.existsSync(path.join(RAW, `${stamp}.translation.gkg.csv.zip`))) ? fs.readFileSync(path.join(RAW, `${stamp}.translation.gkg.csv.zip`)) : await downloadGkg(stamp, { translation: true });
+    if (tb) { stats.bytesZip += tb.length; parts.push(parseGkg(unzipFirst(tb).toString("utf8"), stamp)); }
+  }
+  for (const a of parts.flatMap((g) => [...g])) {
     stats.rows++;
     const dc = (domCount.get(a.domain) || 0) + 1; domCount.set(a.domain, dc);
     if (dc > 25) { stats.junk["domain-cap"] = (stats.junk["domain-cap"] || 0) + 1; continue; }   // one outlet cannot flood a 15-min batch
@@ -125,9 +132,11 @@ function buildAll() {
     let files = 0, bytes = 0, gz = 0, maxB = 0; const byType = {};
     for (const [kk, list] of ranked) {
       const [key, tag] = [kk.slice(0, kk.indexOf("|")), kk.slice(kk.indexOf("|") + 1)];
-      const info = P.describe(key); if (!info) continue;
+      const info = describe(key); if (!info) continue;
+      const apiList = list.map((s) => apiStory(s, now, period, localOf(s, key, ctx), ctx, list.scores && list.scores.get(s)));
+      if (key === "world" && tag === "all") { rep.diversity ||= {}; rep.diversity[period] = { ...diversityReport(apiList), ranking: list.diversity || null }; }
       const body = JSON.stringify({ schema: "snippets.index.v1", mode: period === "live" ? "live" : "curated", period, key, tag, place: info, topic: tag === "all" ? null : TOPIC_LABEL[tag] || tag,
-        generatedAt: rep.generatedAt, builtAt: rep.builtAt, attribution: POLICY.ATTRIBUTION, batch: latest, count: list.length, stories: list.map((s) => apiStory(s, now, period, localOf(s, key, ctx))) });
+        generatedAt: rep.generatedAt, builtAt: rep.builtAt, attribution: POLICY.ATTRIBUTION, batch: latest, count: list.length, ...(key === "world" && tag === "all" ? { diversity: diversityReport(apiList) } : {}), stories: apiList });
       const f = path.join(OUT, period === "live" ? "live" : "curated/" + period, key, tag + ".json");
       fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, body);
       files++; bytes += body.length; maxB = Math.max(maxB, body.length); gz += zlib.gzipSync(body, { level: 6 }).length;
@@ -137,8 +146,8 @@ function buildAll() {
     rep.shards[period] = { files, byType, maxBytes: maxB }; rep.bytes[period] = bytes; rep.gz[period] = gz;
   }
   tick("rank+write");
-  fs.writeFileSync(path.join(OUT, "places.json"), JSON.stringify({ schema: "snippets.index.places.v2", periods: Object.keys(PERIODS), generatedAt: rep.generatedAt, builtAt: rep.builtAt, attribution: POLICY.ATTRIBUTION, batch: latest, k: placesIdx }));
-  rep.placesCovered = { keys: Object.keys(placesIdx).length, byType: Object.keys(placesIdx).reduce((m, k) => { const ty = P.describe(k).type; m[ty] = (m[ty] || 0) + 1; return m; }, {}) };
+  fs.writeFileSync(path.join(OUT, "places.json"), JSON.stringify({ schema: "snippets.index.places.v2", periods: Object.keys(PERIODS), generatedAt: rep.generatedAt, builtAt: rep.builtAt, attribution: POLICY.ATTRIBUTION, batch: latest, k: placesIdx, regions: [...REGION_IDS, MULTI].map((r) => ({ id: r, key: "rg-" + r, name: REGION_NAMES[r] })), scope: "global" }));
+  rep.placesCovered = { keys: Object.keys(placesIdx).length, byType: Object.keys(placesIdx).reduce((m, k) => { const ty = describe(k).type; m[ty] = (m[ty] || 0) + 1; return m; }, {}) };
   rep.ms = t; fs.writeFileSync(path.join(OUT, "_report.json"), JSON.stringify(rep, null, 1));
   return rep;
 }

@@ -4,14 +4,32 @@
 export const MAX_WORDS = 60, MAX_CHARS = 400, NGRAM = 8;
 
 /* Wire services and exclusives: headline + link only, never a summary. */
-const WIRE_TAG = /(^|[\s:(|\-–—[])(PTI|ANI|IANS|UNI|Reuters|AP|AFP|Associated Press|Agence France-Presse|Press Trust of India)(\b|$)/;
-const WIRE_DOMAINS = ["reuters.com", "apnews.com", "afp.com", "ptinews.com", "aninews.in", "ianslive.in", "uniindia.com"];
+/* v1.6 (owner decision D3, global scope): wire = a news agency's own copy, headline + link only. Global and regional agencies, not just the Indian ones.
+   Tags are matched in the title ("... | Xinhua", "(dpa)"); codes that double as other words in headlines are matched by DOMAIN only: UPI (India's payments system),
+   AAP (a political party), PA, MENA. */
+const WIRE_TAG = /(^|[\s:(|\-–—[])(PTI|ANI|IANS|UNI|Reuters|AP|AFP|Associated Press|Agence France-Presse|Press Trust of India|Xinhua|TASS|Kyodo|Yonhap|Anadolu|dpa|ANSA|Bernama|Antara|EFE|WAM|KUNA|IRNA|Lusa|Jiji|Canadian Press|PA Media|Press Association|Agencia EFE|Deutsche Presse-Agentur)(\b|$)/;
+export const WIRE_DOMAINS = [
+  // global
+  "reuters.com", "apnews.com", "afp.com", "upi.com", "dpa.com", "dpa-international.com",
+  // South Asia
+  "ptinews.com", "aninews.in", "ianslive.in", "uniindia.com", "bssnews.net", "app.com.pk",
+  // East and South-East Asia
+  "xinhuanet.com", "news.cn", "english.news.cn", "kyodonews.net", "jiji.com", "yna.co.kr", "yonhapnews.co.kr", "bernama.com", "antaranews.com", "pna.gov.ph", "vnanet.vn", "focustaiwan.tw", "cna.com.tw",
+  // Europe
+  "tass.com", "tass.ru", "ansa.it", "efe.com", "pa.media", "pamediagroup.com", "lusa.pt", "pap.pl", "ritzau.dk", "ntb.no", "tt.se", "stt.fi", "mti.hu", "ctk.cz", "tanjug.rs", "bta.bg", "belta.by",
+  // Middle East and Africa
+  "aa.com.tr", "wam.ae", "spa.gov.sa", "mena.org.eg", "kuna.net.kw", "irna.ir", "qna.org.qa", "petra.gov.jo", "sana.sy", "wafa.ps", "ena.et", "nampa.org", "sapa.org.za", "newsagencyofnigeria.com.ng", "ghananewsagency.org", "mapexpress.ma", "aps.dz",
+  // Americas and Oceania
+  "thecanadianpress.com", "cp24.com", "aap.com.au", "plenglish.com", "prensa-latina.cu", "telam.com.ar", "agenciabrasil.ebc.com.br", "efe.com.br", "notimex.gob.mx",
+  // press-release distributors: the company's own words, not reporting (headline + link only)
+  "prnewswire.com", "businesswire.com", "globenewswire.com", "accesswire.com", "einpresswire.com", "prweb.com"];
+const isWireDomain = (host) => { host = String(host || "").toLowerCase().replace(/^www\./, ""); return WIRE_DOMAINS.some((d) => host === d || host.endsWith("." + d)); };
 const EXCLUSIVE = /\b(exclusive|scoop|first on)\b/i;
 export function headlineOnlyReason(story) {
   const srcs = story.sources || [];
   const outlets = new Set(srcs.map((s) => String(s.domain || s.outlet || "").toLowerCase().replace(/^www\./, "")));
   if (srcs.some((s) => EXCLUSIVE.test(s.title || ""))) return "exclusive";
-  if (srcs.some((s) => WIRE_TAG.test(s.title || "") || WIRE_DOMAINS.some((d) => String(s.domain || "").endsWith(d)))) return "wire";
+  if (srcs.some((s) => WIRE_TAG.test(s.title || "") || isWireDomain(s.domain))) return "wire";
   if (outlets.size < 2) return "single-source";   // summaries must draw on several outlets
   return null;
 }
@@ -23,7 +41,7 @@ const ELECTION_CLAIM = /\b(elections?|by-?elections?|polls?|poll(ing)?|exit poll
 /* Crime, courts, sexual offences, corruption and named people: flag for human review. */
 const SENSITIVE = /\b(murder\w*|kill(ed|ing|s)?|rape\w*|sexual|molest\w*|assault\w*|abus(e|ed|ing)|pocso|arrest\w*|detain\w*|accused|alleg\w*|police|fir\b|chargesheet\w*|court|bail|custody|convict\w*|sentenc\w*|acquit\w*|verdict|cbi|enforcement directorate|raid\w*|corrupt\w*|brib\w*|scam\w*|fraud\w*|lynch\w*|stab\w*|shot dead|kidnap\w*|abduct\w*|suicide|dowry|terror\w*|militant\w*|encounter|probe|defam\w*|minor\b|victim\w*)\b/i;
 // Two or more capitalised words in a row that are not a known place/organisation phrase -> probably a person's name.
-const NOT_PEOPLE = /^(The|A|An|In|On|At|Of|For|And|With|From|By|To|As|After|Before|Over|Under|New|North|South|East|West|Central|United|Supreme|High|Prime|Chief|Union|State|National|Indian|India|World|Asia|Europe|Africa|America|Kerala|Tamil|Uttar|Madhya|Andhra|Himachal|Arunachal|West|Jammu|Delhi|Mumbai|Bengaluru|Lok|Rajya|Reserve|Bank|Stock|Market|Election|Commission|Ministry|Government|Police|Court|Cup|League|Day|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December)$/;
+const NOT_PEOPLE = /^(The|A|An|In|On|At|Of|For|And|With|From|By|To|As|After|Before|Over|Under|New|North|South|East|West|Central|United|Supreme|High|Prime|Chief|Union|State|National|Indian|India|World|Asia|Europe|Africa|America|Kerala|Tamil|Uttar|Madhya|Andhra|Himachal|Arunachal|West|Jammu|Delhi|Mumbai|Bengaluru|Lok|Rajya|Reserve|Bank|Stock|Market|Election|Commission|Ministry|Government|Police|Court|Cup|League|Day|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|January|February|March|April|May|June|July|August|September|October|November|December|Middle|Latin|Southern|Northern|Eastern|Western|Great|Saudi|Arab|Arabia|Korea|Kong|Hong|Sri|Lanka|Zealand|Papua|Sierra|Leone|Costa|Rica|Puerto|Rico|Cape|Town|Buenos|Aires|Los|Angeles|San|Francisco|Las|Vegas|Washington|London|Beijing|Moscow|Kyiv|Paris|Berlin|Tokyo|Cairo|Lagos|Nairobi|Sydney|Canada|Mexico|Brazil|China|Russia|Japan|Germany|France|Britain|Australia|Kingdom|States|Nations|European|African|Asian|American|British|French|German|Chinese|Russian|Japanese|Korean|Israeli|Iranian|Ukrainian|Palestinian|Gaza|Congress|Senate|House|Parliament|Federal|Bureau|Department|Council|Security|Minister|President|Premier|Secretary|General|Foreign|Defence|Defense|Health|Trade|Finance|Energy|Court|Bundesbank|Central|Euro|Dollar|Pound|Yuan|Yen|Rupee|Peso|Oil|Gold|Wall|Street|Silicon|Valley|Pacific|Atlantic|Indian|Ocean|Sea|River|Lake|Mount|Island|Islands|Republic|Emirates|Zealand|Taiwan|Vietnam|Thailand|Indonesia|Malaysia|Singapore|Philippines|Pakistan|Bangladesh|Nepal|Turkey|Egypt|Iran|Iraq|Syria|Israel|Lebanon|Yemen|Qatar|Kuwait|Oman|Jordan|Nigeria|Kenya|Ghana|Ethiopia|Sudan|Somalia|Uganda|Tanzania|Zimbabwe|Zambia|Argentina|Chile|Colombia|Peru|Venezuela|Cuba|Haiti|Ukraine|Poland|Spain|Italy|Greece|Sweden|Norway|Denmark|Finland|Ireland|Scotland|Wales|England|Netherlands|Belgium|Switzerland|Austria|Hungary|Romania|Serbia|Croatia)$/;
 export function reviewReasons(story) {
   const text = (story.sources || []).map((s) => s.title || "").join(" \n ") + " " + (story.headline || "");
   const r = [];
