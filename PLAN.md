@@ -1,6 +1,6 @@
 # Snippets — GDELT bulk-file index (workaround for slow / 429 DOC API)
 
-Status: **research + local prototype only.** Nothing deployed, no Cloudflare/GitHub account touched, live worker and site untouched, no secrets used.
+Status (23 Oct 2026, IST): **pre-live trial built.** Code is in the public repo `sjanarda85/snippets-news-index`; the Worker (`worker/src/index-client.js`, `blocklist.js`) and front-end (`feed-modes.js`) read it. Sections 0-9 are the original research (kept for the numbers); **section 10 is the current design, Legal conditions and runbook and wins where they differ.**
 All numbers below were measured on this box from real GDELT files (72 h ending 2026-10-23 04:00 UTC) unless marked *estimate* or *unverified*.
 
 ## 0. Verdict
@@ -82,7 +82,7 @@ Sizes: ≈ 11 k files, 194 MB raw (46 MB gz) now; live set alone 1,371 files / 4
 * Single upstream (GDELT): if GDELT stalls the index goes stale (shown via `batch`).
 * India-local news is thinner than global news in this stream; `from-IN` ranks by Indian outlets to compensate.
 
-## 8. Owner decisions / approvals needed (nothing done yet)
+## 8. Owner decisions / approvals needed (original list; see section 10 for what was decided)
 1. Choose hosting: **new public GitHub repo + Pages (₹0)** vs paid option (R2 ≈ ₹2,200/mo, Workers Paid ₹420/mo + finance). Creating the repo, enabling Pages and the Actions workflow = external changes → needs explicit approval.
 2. Confirm GDELT commercial use in writing and the attribution wording.
 3. Legal sign-off on the flag policy (§6.1) and on serving headlines from the index.
@@ -92,3 +92,31 @@ Sizes: ≈ 11 k files, 194 MB raw (46 MB gz) now; live set alone 1,371 files / 4
 ## 9. Files
 `ingest.mjs` (CLI: `update | backfill --days N | build | one`), `lib/{gdelt,places,topics,junk,cluster,outlets,build}.mjs`, `resolver.mjs`, `test.mjs`, `measure_raw.py`, `worker-read.sketch.mjs`, `ci/snippets-index.yml.example`, `data/DOMAINSBYCOUNTRY-ALLLANGUAGES.TXT`, `out/` (samples: `live/…`, `curated/{24h,7d,30d}/…`, `places.json`, `_report.json`, `SAMPLES.md`). Not kept in git: `raw/`, `state/`, `build/`.
 Run: `node ingest.mjs backfill --days 3 --nobuild && node ingest.mjs build && node test.mjs build`.
+
+
+## 10. Trial build: what runs, Legal conditions, runbook (23 Oct 2026)
+
+**What runs.** `.github/workflows/index.yml` (cron `7,22,37,52 * * * *`, odd minutes on purpose; `workflow_dispatch` takes `backfill_days`) restores `state/` from `actions/cache`, runs `node ingest.mjs update` (fetch new 15-minute GKG files from storage.googleapis.com then data.gdeltproject.org, filter, cluster, rank), then publishes `public/` + the shards with `actions/upload-pages-artifact` + `actions/deploy-pages` (GITHUB_TOKEN only, no secrets). First run backfills 7 days; each later run grows the state toward 30 days (`--grow-days`). A weekly heartbeat commit to `HEARTBEAT.txt` keeps GitHub from disabling the schedule after 60 days of repo inactivity. **Shards are never committed to git.**
+
+**Worker read path.** `places.json` (+ one shard) from `INDEX_BASE_URL`, index first for every request (World, India, states, cities, topics, legacy requests without `mode`), live DOC API only if the index cannot answer. Details in `worker/DEPLOY.md` > "GDELT index (trial)".
+
+**Legal conditions implemented (Legal review section 10):**
+| | Condition | Where |
+|---|---|---|
+| a | Trial hosting is for **pre-live only**. Before any paid plan: private store read by the Worker (e.g. R2 or a private origin), scheduler off GitHub. Hosting stays swappable (`INDEX_BASE_URL`). | `wrangler.toml`, DEPLOY.md |
+| b | No shard commits; Pages artifact only. | workflow |
+| c | Odd-minute cron; weekly heartbeat; `generatedAt` + `builtAt` in `places.json` and every shard; Worker marks the index stale when `builtAt` > 45 min old and says so; > 12 h old: DOC API first, old index only if DOC fails. | `lib/policy.mjs`, `index-client.js` |
+| d | `attribution` = "Contains data from The GDELT Project, https://www.gdeltproject.org/" in every shard and `places.json`, repo README, site footer, About page, feed panel. | |
+| e | Retention: Live window 6 h (shards replaced each run, nothing accumulated beyond the 72 h working window, <= ~48 h of live data kept); Curated <= 30 days; flagged <= 7 days. | `POLICY.*` |
+| f | No tone on flagged stories. A crime place is taken only from the headline text, never from GDELT's place field alone. GDELT person/organisation lists are never stored. | `build.mjs`, `policy.mjs` |
+| g | Flagged = crime/court (the allegation label applies) and named-person (headline-only): headline unchanged, no summary, label "Reported by [Outlet]. Allegation, not established." Stories involving minors or sexual-offence victims are dropped at ingest (keyword filter, conservative). Guilt-as-fact stories about named people are held (not published). Blocklist: see below. | |
+
+**Blocklist SOP (credible legal complaint: remove within 4 hours).**
+1. Add the URL (or `id:<storyId>`) to **both** `worker/src/blocklist.js` (`BLOCKED_URLS`) and `ingest/blocklist.txt`.
+2. `cd worker && ./deploy.sh` (the cache key includes a hash of the list, so every cached copy is dead the moment the new Worker is live), then push `blocklist.txt` and run the workflow once (`gh workflow run index.yml`) so the URL leaves the shards too.
+3. Log the removal as: date, SHA-256 of the URL, who asked. Do not keep the headline or the URL.
+4. Tell Legal the URL is down. Target: within 4 hours of receipt.
+
+**Weekly spot check (Legal: 5% of unflagged items).** `node spotcheck.mjs > spotcheck-YYYYMMDD.csv` samples about 5% (min 10) of unflagged curated stories from the live Pages index. A person reads each headline, marks `ok_or_problem`, and any miss goes through the blocklist SOP plus a note to Legal so the keyword filter (`lib/policy.mjs`) can be extended. Keep the CSV without URLs after review.
+
+**Known limits.** (1) About two thirds of stories are needs-review under the Worker's named-person heuristic (`guard.js`), so only a minority get a machine summary; the rest are headline-only. (2) Place matching is heuristic (known false hits: Cochin Shipyard, Mumbai Indians; `FALSE_PLACE` in `build.mjs` handles the common ones). (3) A public repo plus public Pages means the headline index is publicly fetchable, which sits uneasily with the Legal wish to keep shards non-public (10.3). The owner accepted this for the pre-live trial only; it must move before launch. (4) GitHub scheduled runs can be late; the staleness guard covers that.
