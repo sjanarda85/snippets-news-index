@@ -98,14 +98,14 @@ Run: `node ingest.mjs backfill --days 3 --nobuild && node ingest.mjs build && no
 
 **What runs.** `.github/workflows/index.yml` (cron `7,22,37,52 * * * *`, odd minutes on purpose; `workflow_dispatch` takes `backfill_days`) restores `state/` from `actions/cache`, runs `node ingest.mjs update` (fetch new 15-minute GKG files from storage.googleapis.com then data.gdeltproject.org, filter, cluster, rank), then publishes `public/` + the shards with `actions/upload-pages-artifact` + `actions/deploy-pages` (GITHUB_TOKEN only, no secrets). First run backfills 7 days; each later run grows the state toward 30 days (`--grow-days`). A weekly heartbeat commit to `HEARTBEAT.txt` keeps GitHub from disabling the schedule after 60 days of repo inactivity. **Shards are never committed to git.**
 
-**Worker read path.** `places.json` (+ one shard) from `INDEX_BASE_URL`, index first for every request (World, India, states, cities, topics, legacy requests without `mode`), live DOC API only if the index cannot answer. Details in `worker/DEPLOY.md` > "GDELT index (trial)".
+**Worker read path (owner decision 23 Oct: "do the same as Inshorts").** Collect ahead of time, store, serve every reader from the stored copy. `places.json` (+ one shard) from `INDEX_BASE_URL` answers every request (World, India, states, cities, topics, free-text search over stored stories, legacy requests without `mode`). The live DOC API is NOT on the reader path (default `DOC_FALLBACK="off"`); an old index is shown with an "updated X ago" note; only a cold isolate with Pages unreachable returns a friendly 503. Details in `worker/DEPLOY.md` > "GDELT index (trial)".
 
 **Legal conditions implemented (Legal review section 10):**
 | | Condition | Where |
 |---|---|---|
 | a | Trial hosting is for **pre-live only**. Before any paid plan: private store read by the Worker (e.g. R2 or a private origin), scheduler off GitHub. Hosting stays swappable (`INDEX_BASE_URL`). | `wrangler.toml`, DEPLOY.md |
 | b | No shard commits; Pages artifact only. | workflow |
-| c | Odd-minute cron; weekly heartbeat; `generatedAt` + `builtAt` in `places.json` and every shard; Worker marks the index stale when `builtAt` > 45 min old and says so; > 12 h old: DOC API first, old index only if DOC fails. | `lib/policy.mjs`, `index-client.js` |
+| c | Odd-minute cron; weekly heartbeat; `generatedAt` + `builtAt` in `places.json` and every shard; Worker marks the index stale when `builtAt` > 45 min old and says so; older: still shown with an age note (the live DOC API is not used for readers; `DOC_FALLBACK="on"` is an emergency switch). | `lib/policy.mjs`, `index-client.js` |
 | d | `attribution` = "Contains data from The GDELT Project, https://www.gdeltproject.org/" in every shard and `places.json`, repo README, site footer, About page, feed panel. | |
 | e | Retention: Live window 6 h (shards replaced each run, nothing accumulated beyond the 72 h working window, <= ~48 h of live data kept); Curated <= 30 days; flagged <= 7 days. | `POLICY.*` |
 | f | No tone on flagged stories. A crime place is taken only from the headline text, never from GDELT's place field alone. GDELT person/organisation lists are never stored. | `build.mjs`, `policy.mjs` |
