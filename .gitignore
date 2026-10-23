@@ -1,0 +1,10 @@
+raw/
+state/
+state_*/
+build/
+build_*/
+out/
+scratch/
+_site/
+node_modules/
+*.log

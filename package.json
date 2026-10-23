@@ -1,0 +1,10 @@
+{
+  "name": "snippets-news-index",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Builds a small JSON index of recent news headlines from the GDELT Project's public 15-minute files (pre-live trial).",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": { "update": "node ingest.mjs update", "backfill": "node ingest.mjs backfill --days 7", "build": "node ingest.mjs build", "test": "node test.mjs build" }
+}
